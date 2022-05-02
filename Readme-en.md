@@ -1,6 +1,6 @@
 # Yelp Review Scraper
 
-This code is made for scraping reviews from Yelp website. You have to prepare a file in csv in which **name and Yelp ID** of target restaurants are contained.
+This code is designed for scraping reviews from Yelp. It must be provided with **a file that contains target Yelp IDs** in `.csv` format (the "target list"). `Res_List_From_Inspection.csv` is an example file.
 
 The following data will be collected:
 
@@ -11,41 +11,43 @@ The following data will be collected:
 * Ratings: It is a user-rated scoring (from 1 to 5, only integer) in a review.
 * Rating Date: It is a date when a review was left.
 * ROTD: It is the abbreviation of '**R**eview **O**f **T**he **D**ay', which means the review was a great help to other users.
-* Updated: It is whether a review was modified at least once.
+* Updated: It is whether a review was edited at least once.
 * Number of Photos: It is the number of photos attached to a review.
 * Number of Usefuls: It is the number of 'Useful' for a review.
 * Number of Funnys: It is the number of 'Funny' for a review.
 * Number of Cools: It is the number of 'Cools' for a review.
-* Owner Replied: It is whether any restaurant staff (manager, or owner) replied a review.
-* Owner Reply Date: It is a date when reply was left.
-* Owner Reply: 식당 관계자의 답글입니다.
-* Previous Average Ratings: 이전에 남겼던 리뷰 평점의 평균입니다.
-* Previous Average Usefuls: 이전에 남겼던 리뷰들의 Useful 개수의 평균입니다.
-* Previous Average Funnys: 이전에 남겼던 리뷰들의 Funny 개수의 평균입니다.
-* Previous Average Cools: 이전에 남겼된 리뷰들의 Cool 개수의 평균입니다.
+* Owner Replied: It is whether a restaurant staff (manager or owner) replied a review.
+* Owner Reply Date: It is a date when a reply was left.
+* Owner Reply: It is a reply content.
+* Previous Average Ratings: It is the average rating of all previous reviews of a user.
+* Previous Average Usefuls: It is the average number of 'Useful' of all previous reviews of a user.
+* Previous Average Funnys: It is the average number of 'Funny' of all previous reviews of a user.
+* Previous Average Cools: It is the average number of 'Cools' of all previous reviews of a user.
 
 ## How it works?
-This code is written by Python 3. It is for web scraping using Selenium library. You have to the restaurant list file in advance. It scrapes all reviews of each restaurant in the order of restaurants in the restaurant list file. Note that it scrapes _only English reviews_, although Yelp provides multi-lingual reviews.
-Yelp provides at most 10 reviews on a page. So, if a restaurant has more than 10 reviews, then it has several review pages. Yelp automatically detect scraping with high probablility if reviews are scraped in page order. Hence, this program scrapes reviews by changing another page randomly after all reviews of one page get scraped.
+This code is written in Python 3 and Selenium is selected as a tool for scraping. The program assigns an index to each restaurant in the target list from 0. A user can arbitrarily narrow down the range of target restaurants by specifying the start and end index. It scrapes reviews of the given target restaurants in the order of indices. Note that it scrapes _only English reviews_, although Yelp provides multi-lingual reviews.
+
+A restaurant whose reviews are more than 10 has several review pages because Yelp displays at most 10 reviews on a page. Yelp automatically detect scraping with high probablility if reviews are scraped in page order. Hence, this program scrapes reviews by changing another page randomly after all reviews of one page get scraped.
+
 If an error occurs during scraping reviews of a restaurant, then this program does not save them and move to next restaurant. After visiting all restaurants, it reports _the number of rastaurants whose reviews are successfully scraped_, _the number of rastaurants whose reviews fail to be scraped and the indices of such rastaurnats_. Finally, it saves all reviews to `.csv` format. 
 
-## Restaurant List File
-이 프로그램이 수집할 식당들의 이름과 Yelp ID를 담은 파일입니다. 식당 이름은 반드시 Yelp에 등록되어 있는 식당 이름과 같을 필요가 없습니다. `.csv` 파일로 아래와 같은 형식으로 되어있어야합니다. 특히 Column 이름(`res_name` 및 `yelp_id`)이 같은지 반드시 확인하여 주십시오.
-| res_name | yelp_id |
-| ----- | ----- |
-| Benemon | benemon-new-york |
-| BXL Cafe | bxl-cafe-new-york-2 |
-| Locanda Verde | locanda-verde-new-york |
-| Zoralie Restaurant | zoralie-restaurant-new-york |
-| Porteno Restaurant | porteno-restaurant-new-york |
+## Target List
+The target list is a `.csv` file in which target Yelp IDs are contained. It should include a column named `yelp_id` like below:
+| yelp_id |
+| ----- |
+| benemon-new-york |
+| bxl-cafe-new-york-2 |
+| locanda-verde-new-york |
+| zoralie-restaurant-new-york |
+| porteno-restaurant-new-york |
 ...
 
-AWS Mode를 이용할 경우, 이 파일은 Bucket에 저장되어 있어야합니다. 그 외에는 이 코드가 저장되어 있는 폴더에 해당 파일을 저장해주십시오. 
+If AWS mode is on, the target list must be located in S3 Bucket. Otherwise, the code and target list must be in the same folder.
 
 ## Setup
-모든 코드는 Python 3.7.6, Windows 10 Version 21H2 및 Selenium 4.0.0에서 개발되었고 테스트 되었습니다.
+All code was developed ans tested on Windows 10 Version 21H2 with Python 3.7.6 and Selenium 4.0.0.
 
-Windows 환경에서 Anaconda3가 설치되어 있다면, Anaconda Prompt를 실행하여 경로를 이 GitHub에서 Clone한 폴더로 설정하고, 아래의 가상환경을 설정하여 코드를 실행할 수 있습니다:
+If you installed Anaconda 3, execute Anaconda prompt, change the directory to a folder to which you cloned this GitHub, setup an virtual environment to run the code like below:
 
 ```shell
 conda create -n yelp_review_scraper           # Create a virtual environment named 'yelp_review_scraper'
@@ -58,51 +60,60 @@ conda deactivate
 ```
 
 ### Requirements
-이 코드를 정상적으로 실행하기 위해 아래의 패키지들이 설치되어 있는지 확인하여 주십시오.
+Please check whether following packages are installed before running the code.
 * pandas 1.4.2
 * selenium 4.0.0
 * boto3 1.21.32
 * webdriver-manager 3.5.4
 
 ## AWS Mode
-만약 AWS EC2와 S3를 사용한다면, 코드 실행시 `--aws_mode=1` 인자를 포함시켜 AWS 모드를 활성화할 수 있습니다. `aws_key.ini` 파일에서 개인의 AWS 서비스에 접근하기 위한 4가지의 정보를 입력해야합니다.
+If you use AWS EC2 and S3, you can activate AWS mode by including `--aws_mode==1` argument when running the code. When it is activated, all data will be saved into S3 bucket. You should fill out the following values in `aws_key.ini` to access your AWS serivces. All values must be enclosed in single quotes (').
 
-## Command Line Arguments
-코드 실행 시 아래와 같은 옵션을 설정할 수 있습니다.
+| Value | Description |
+| ----- | ----- |
+| aws_access_key | Refer to https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html |
+| aws_secret_key | Refer to https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html |
+| aws_region | It is AWS region your AWS service is working on. |
+| aws_bucket_name | It is the name AWS S3 bucket in which the target list is located and the output will be saved. |
+
+## Options
+You can control the following options when running the code:
 
 ### Scraper Options
 | Argument | Type | Description | Default |
 | ----- | ----- | ----- | ----- |
-| `--start_index` | unsigned int | 시작 인덱스 값입니다. `전체 식당 개수 - 1`보다 클 수 없습니다.| 0 |
-| `--end_index` | unsigned int | 끝 인덱스 값입니다. 시작 인덱스 값보다는 크고, `전체 식당 개수 - 1`보다 작아야 합니다. -1로 설정하면, 마지막 인덱스로 설정됩니다.| -1 |
-| `--wait_time_for_new_index` | unsigned int | 한 식당에서 다른 식당으로 넘어갈 때 대기 시간(초)입니다. | 10 |
-| `--wait_time_for_establishment` | unsigned int | 식당의 Yelp 상에 등록된 이름을 성공적으로 불러올 때 까지의 대기 시간(초)입니다. | 10 |
-| `--wait_time_for_next_page` | unsigend int | 식당의 한 리뷰 페이지에서 다음 리뷰 페이지로 넘어갈 때 대기 시간(초)입니다. | 10 |
+| `--start_index` | int | This is an index of a first target restaurant. It must be smaller than or equal to end index, and cannot be larger than `the total number of target restaurants - 1`.| 0 |
+| `--end_index` | int | This is an index of a last target restaurant. It must be larger than or equal to start index, and cannot be larger than `the total number of target restaurants - 1`. -1 implies the last index of the target list.| -1 |
+| `--wait_time_for_new_index` | int | This is waiting time for a next index. | 10 |
+| `--wait_time_for_establishment` | int | This is waiting time for loading the name of a restuarant.  | 10 |
+| `--wait_time_for_next_page` | int | The is waiting time for a next review page of a restaurant.  | 10 |
+
+Three waiting times should be decided in a balance between scraping speed and fail frequency. If too short, the work may frequently fail because the program tries to scrape reviews before a page is completely loaded. If too long, the task may drag on unnecessarily. 
 
 ### Display Option
 | Argument | Type | Description | Default |
 | ----- | ----- | ----- | ----- |
-| `--verbose` | boolean | 1이면 리뷰 수집 중 그 상황을 자세히 보고합니다. | 1 |
+| `--verbose` | boolean | 1 = The program will display additional details on the console. | 1 |
 
 ### Dataset Option
 | Argument | Type | Description | Default |
 | ----- | ----- | ----- | ----- |
-| `--dataset_name` | string | 식당 리스트 파일의 이름입니다. | 'Res_List_From_Inspection' |
+| `--dataset_name` | string | This is the name of the target list. | 'Res_List_From_Inspection' |
 
 ### AWS Option
 | Argument | Type | Description | Default |
 | ----- | ----- | ----- | ----- |
-| `--aws_mode` | boolean | 1이면 AWS 모드를 활성화합니다 (**AWS Mode** 섹션 참고). | 0 |
+| `--aws_mode` | boolean | 1 = Activate AWS mode (refer to **AWS Mode**). | 0 |
 
 ### Chrome Option
 | Argument | Type | Description | Default |
 | ----- | ----- | ----- | ----- |
-| `--chrome_open` | boolean | 1이면 크롬 창을 띄워 리뷰를 수집 중인 식당 웹페이지를 실시간으로 볼 수 있습니다. Windows가 아닌 환경에서는 항상 0으로 강제 설정됩니다. | 0 |
+| `--open_chrome` | boolean | 1 = The program will open the Chrome window that shows the process of scraping. Always 0 for non-Windows platform. | 0 |
 
 ### Save Options
 | Argument | Type | Description | Default |
 | ----- | ----- | ----- | ----- |
-| `--index_suffix` | boolean | 결과 파일을 저장할 때, 파일명 뒤에 시작 인덱스 값과 끝 인덱스 값을 붙입니다. (yelp_review_**from_0_to_100**.csv) | 1 |
+| `--index_suffix` | boolean | 1 = The program will attach start and end index to a file name when it saves the output. (ex. yelp_review_**from_0_to_100**.csv) | 1 |
 
 ## Keys for Scraping
-The class names in Yelp Web HTML are not intuitive. Moreover, they are frequently changed. If the program fail to scrape any reviews of resturants, you should check whether some class names are changed. Note that `keys_for_scraping.ini` contains all class names needed for scraping.
+The class names in Yelp HTML are not intuitive. Moreover, they are frequently changed. If the program fails to scrape any reviews of resturants, you should check whether some class names are changed. Note that `keys_for_scraping.ini` contains all class names needed for scraping. All values must be enclosed in single quotes (').
