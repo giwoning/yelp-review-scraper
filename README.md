@@ -46,7 +46,7 @@ Yelp에서는 한 페이지당 10개의 리뷰를 볼 수 있습니다. 10개보
 
 모든 식당들의 리뷰가 수집될 경우, Dictionary를 pandas의 Dataframe으로 변경하고, 이를 다시 csv 파일로 저장합니다. 그 이후 프로그램을 종료합니다.
 
-## Restaurant List File
+## Target List
 이 프로그램이 수집할 식당들의 이름과 Yelp ID를 담은 파일입니다. `.csv` 파일로 아래와 같은 형식으로 되어있어야합니다. Yelp ID가 담긴 열의 첫 행은 반드시 `yelp_id`로 설정해야합니다.
 | yelp_id |
 | ----- |
@@ -85,12 +85,12 @@ conda deactivate
 만약 AWS EC2와 S3를 사용한다면, 코드 실행시 `--aws_mode=1` 인자를 포함시켜 AWS 모드를 활성화할 수 있습니다. `aws_key.ini` 파일에서 개인의 AWS 서비스에 접근하기 위한 4가지의 정보를 입력해야합니다. 위 값들은 모두 작은 따옴표(')로 둘러싸야합니다.
 | Value | Description |
 | ----- | ----- |
-| aws_access_key | AWS 서비스에 접근하기 위한 아이디입니다. |
-| aws_secret_key | AWS 서비스에 접근하기 위한 비밀번호입니다. |
+| aws_access_key | https://docs.aws.amazon.com/ko_kr/IAM/latest/UserGuide/id_credentials_access-keys.html 참조 |
+| aws_secret_key | https://docs.aws.amazon.com/ko_kr/IAM/latest/UserGuide/id_credentials_access-keys.html 참조 |
 | aws_region | AWS 서비스를 사용하는 지역 코드입니다. |
 | aws_bucket_name | AWS S3에서 사용자가 설정한 Bucket 이름입니다. |
 
-## Command Line Arguments
+## Options
 코드 실행 시 아래와 같은 옵션을 설정할 수 있습니다.
 
 ### Scraper Options
