@@ -1,3 +1,5 @@
+[English](Readme-en.md)
+
 # Yelp Review Scraper
 
 이 코드는 Yelp 사이트에서 제공하는 리뷰를 수집합니다. 수집하고자하는 Yelp에 등록된 식당의 **Yelp ID가 담겨있는 파일** (이하 식당 리스트 파일)만 준비하면 됩니다.
