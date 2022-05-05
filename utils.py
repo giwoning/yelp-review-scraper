@@ -28,6 +28,23 @@ def load_aws_keys(_path):
 
     return aws_info['aws_access_key'], aws_info['aws_secret_key'], aws_info['aws_region'], aws_info['aws_bucket_name']
 
+def load_index_set(_path):
+    iset = set()
+    with open(_path, 'r') as f:
+        for line in f:
+            line = line.strip().split(',')
+            if '' in line:
+                line.remove('')
+            iset.update([int(index) for index in line])
+    return iset
+
+def check_index_list(ilist, max_index):
+    pass_ = True
+    for index in ilist:
+        if index < 0 or index > max_index:
+            pass_ = False
+    return pass_
+
 def set_to_df(_set):
     review_info = ['userid', 'yelpid', 'establishment', 'review', 'rating', 'rating_date', 'rotd', 'updated', 'photos',
                    'useful', 'funny', 'cool', 'owner_replied', 'owner_reply_date', 'owner_reply', 'pr_avg_ratings',
