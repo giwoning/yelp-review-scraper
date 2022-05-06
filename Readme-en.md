@@ -1,3 +1,5 @@
+[Korean](README.md)
+
 # Yelp Review Scraper
 
 This code is designed for scraping reviews from Yelp. It must be provided with **a file that contains target Yelp IDs** in `.csv` format (the "target list"). `Res_List_From_Inspection.csv` is an example file.
@@ -44,6 +46,9 @@ The target list is a `.csv` file in which target Yelp IDs are contained. It shou
 
 If AWS mode is on, the target list must be located in S3 Bucket. Otherwise, the code and target list must be in the same folder.
 
+## Specify Indices
+You can specifiy indices which the program will work on by typing indices on `index_set.txt`. The distinct indices must be separated by comma (','). If some indices in `index_set.txt` are out of index range, the program will detect it and be terminated immediately.
+
 ## Setup
 All code was developed ans tested on Windows 10 Version 21H2 with Python 3.7.6 and Selenium 4.0.0.
 
@@ -87,6 +92,7 @@ You can control the following options when running the code:
 | `--wait_time_for_new_index` | int | This is waiting time for a next index. | 10 |
 | `--wait_time_for_establishment` | int | This is waiting time for loading the name of a restuarant.  | 10 |
 | `--wait_time_for_next_page` | int | The is waiting time for a next review page of a restaurant.  | 10 |
+| `--index_specified_mode` | int | 1 = Activate Index Specified Mode (refer to **Specifiy Indices**). | 0
 
 Three waiting times should be decided in a balance between scraping speed and fail frequency. If too short, the work may frequently fail because the program tries to scrape reviews before a page is completely loaded. If too long, the task may drag on unnecessarily. 
 
@@ -113,7 +119,23 @@ Three waiting times should be decided in a balance between scraping speed and fa
 ### Save Options
 | Argument | Type | Description | Default |
 | ----- | ----- | ----- | ----- |
-| `--index_suffix` | boolean | 1 = The program will attach start and end index to a file name when it saves the output. (ex. yelp_review_**from_0_to_100**.csv) | 1 |
+| `--index_suffix` | boolean | 1 = The program will attach min and max index to a file name when it saves the output. (ex. yelp_review_**from_0_to_100**.csv) | 1 |
 
 ## Keys for Scraping
 The class names in Yelp HTML are not intuitive. Moreover, they are frequently changed. If the program fails to scrape any reviews of resturants, you should check whether some class names are changed. Note that `keys_for_scraping.ini` contains all class names needed for scraping. All values must be enclosed in single quotes (').
+
+## Change Logs
+Ver 1.0.1 - 2022/05/06
+
+### New feature
+* Index Specified Mode
+  * It allows you to directly input indices of restaurants to collect reviews.
+  * Options `start_index` and `end_index` will be ignored.
+  * It requires you to create `index_set.txt` file in which indices of retaurants to collect reviews are inputted. Each distinct index must be seperated by comma (',').
+
+### Changes
+* Now when `index_suffix` option is turned on, the number of failed cases will be additionally attached to a file name.
+* Option names `start_index` and `end_index` are changed to `min_index` and `max_index` resepcitvely.
+
+### Bugs
+* Fixed the number of photos attached to a review is inaccruately collected.
