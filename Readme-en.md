@@ -27,7 +27,7 @@ The following data will be collected:
 * Previous Average Cools: It is the average number of 'Cools' of all previous reviews of a user.
 
 ## How it works?
-This code is written in Python 3 and Selenium is selected as a tool for scraping. The program assigns an index to each restaurant in the target list from 0. A user can arbitrarily narrow down the range of target restaurants by specifying the start and end index. It scrapes reviews of the given target restaurants in the order of indices. Note that it scrapes _only English reviews_, although Yelp provides multi-lingual reviews.
+This code is written in Python 3 and Selenium is selected as a tool for scraping. The program assigns an index to each restaurant in the target list from 0. A user can arbitrarily narrow down the range of target restaurants by specifying the min and max index. It scrapes reviews of the given target restaurants in the order of indices. Note that it scrapes _only English reviews_, although Yelp provides multi-lingual reviews.
 
 A restaurant whose reviews are more than 10 has several review pages because Yelp displays at most 10 reviews on a page. Yelp automatically detect scraping with high probablility if reviews are scraped in page order. Hence, this program scrapes reviews by changing another page randomly after all reviews of one page get scraped.
 
@@ -87,8 +87,8 @@ You can control the following options when running the code:
 ### Scraper Options
 | Argument | Type | Description | Default |
 | ----- | ----- | ----- | ----- |
-| `--start_index` | int | This is an index of a first target restaurant. It must be smaller than or equal to end index, and cannot be larger than `the total number of target restaurants - 1`.| 0 |
-| `--end_index` | int | This is an index of a last target restaurant. It must be larger than or equal to start index, and cannot be larger than `the total number of target restaurants - 1`. -1 implies the last index of the target list.| -1 |
+| `--min_index` | int | This is an index of a first target restaurant. It must be smaller than or equal to max index, and cannot be larger than `the total number of target restaurants - 1`.| 0 |
+| `--max_index` | int | This is an index of a last target restaurant. It must be larger than or equal to min index, and cannot be larger than `the total number of target restaurants - 1`. -1 implies the last index of the target list.| -1 |
 | `--wait_time_for_new_index` | int | This is waiting time for a next index. | 10 |
 | `--wait_time_for_establishment` | int | This is waiting time for loading the name of a restuarant.  | 10 |
 | `--wait_time_for_next_page` | int | The is waiting time for a next review page of a restaurant.  | 10 |
