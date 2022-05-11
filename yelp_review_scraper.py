@@ -6,8 +6,10 @@ import sys
 import io
 import os
 import platform
+import traceback
+import json
 from timeit import default_timer as timer
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 import pandas as pd
 from selenium import webdriver
@@ -22,9 +24,9 @@ import boto3
 import utils
 
 parser = argparse.ArgumentParser()
-FORMAT = '[%(levelname)s: %(filename)s: %(lineno)4d] %(message)s'
-logging.basicConfig(level=logging.INFO, format=FORMAT, stream=sys.stdout)
-logger = logging.getLogger(__name__)
+
+# Mode Option
+parser.add_argument('--collected_object', choices=['restaurant', 'review', 'profile'], required=True)
 
 # Scraper Options
 parser.add_argument('--min_index', default=0, type=int)
@@ -32,29 +34,307 @@ parser.add_argument('--max_index', default=-1, type=int)
 parser.add_argument('--wait_time_for_new_index', default=10, type=int)
 parser.add_argument('--wait_time_for_establishment', default=10, type=int)
 parser.add_argument('--wait_time_for_next_page', default=10, type=int)
-parser.add_argument('--index_specified_mode', default=0, type=int)
+parser.add_argument('--index_specified_mode', default=False, type=bool)
 
-# Display Option
-parser.add_argument('--verbose', default=1, type=int)
+# Log Options
+parser.add_argument('--verbose', default=True, type=bool)
+parser.add_argument('--save_log', default=False, type=bool)
 
 # Dataset Option
-parser.add_argument('--dataset_name', default='Res_List_From_Inspection', type=str)
+parser.add_argument('--target_list_name', default='User_List', type=str)
 
 # AWS Options
-parser.add_argument('--aws_mode', default=0, type=int)
+parser.add_argument('--aws_mode', default=False, type=bool)
 
 # Chrome Option
-parser.add_argument('--open_chrome', default=0, type=int)
+parser.add_argument('--open_chrome', default=False, type=bool)
 
 # Save Option
-parser.add_argument('--index_suffix', default=1, type=int)
+parser.add_argument('--index_suffix', default=True, type=bool)
+
+args = parser.parse_args()
+
+# Logger
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+formatter = logging.Formatter('[%(asctime)s][%(levelname)s] >> %(message)s')
+
+if args.save_log:
+    fileHandler = logging.FileHandler('./logs/yelp_review_result-' + datetime.now().strftime('%Y_%m_%d-%I_%M_%S_%p')
+                                      + '.txt', mode='w', encoding='cp949')
+    fileHandler.setFormatter(formatter)
+    logger.addHandler(fileHandler)
+
+streamHandler = logging.StreamHandler()
+streamHandler.setFormatter(formatter)
+logger.addHandler(streamHandler)
 
 success_num = 0
 fail_num = 0
 fail_list = []
+no_review_res_list = []
 reviews = {}
+profiles = {}
 
-def scraper(driver, index, res, class_names, xpaths):
+def reviewer_scraper(driver, index, reviewer):
+    logger.info('Current working index: ' + str(index) + '. User ID is ' + reviewer['user_id'] + '.')
+
+    url = 'https://www.yelp.com/user_details?userid=' + reviewer['user_id']
+    driver.get(url)
+    time.sleep(args.wait_time_for_new_index)
+    profile_photo_urls = []
+
+    photo_info = "yelp.www.init.user_details.initPhotoSlideshow(\".js-photo-slideshow-user-details\", "
+    photo_slide_script = ""
+    all_scripts = driver.find_elements(By.TAG_NAME, 'script')
+    for script in all_scripts:
+        if script.get_attribute('innerHTML').find(photo_info) != -1:
+            photo_slide_script = script.get_attribute('innerHTML')
+
+    # No Photos or Only One Photo
+    if photo_slide_script == "":
+        photo_src = driver.find_elements(By.CLASS_NAME, 'photo-box-img')[0].get_attribute('src')
+        if photo_src.find('user_large_square.png') == -1:
+            profile_photo_urls.append(photo_src)
+    else:
+        start_index = photo_slide_script.find(photo_info)
+        end_index = photo_slide_script.find(")", start_index)
+        photo_list = json.loads(photo_slide_script[start_index + len(photo_info):end_index])
+
+        for elm in photo_list:
+            profile_photo_urls.append(elm['source_url'])
+    profile_photo_urls = ', '.join(profile_photo_urls)
+
+    user_profile_info = driver.find_elements(By.XPATH, '//div[@class="user-profile_info arrange_unit"]')[0]
+    name = ""
+    nickname = ""
+    name_element = user_profile_info.find_elements(By.XPATH, './h1')
+    if len(name_element) > 0:
+        full_name = name_element[0].text
+        if full_name.find("\"") != -1:
+            name = full_name[:full_name.find("\"")] + full_name[full_name.rfind("\"") + 2:]
+            nickname = full_name[full_name.find("\"") + 1:full_name.rfind("\"")]
+        else:
+            name = full_name
+
+    user_passport_stats = user_profile_info.find_elements(By.XPATH, './/div[@class="clearfix"]/ul')[0]
+    friend_count_element = user_passport_stats.find_elements(By.XPATH, '//li[@class="friend-count"]')[0]
+    review_count_element = user_passport_stats.find_elements(By.XPATH, '//li[@class="review-count"]')[0]
+    photo_count_element = user_passport_stats.find_elements(By.XPATH, '//li[@class="photo-count"]')[0]
+
+    friends = int(friend_count_element.find_element(By.XPATH, './strong').text)
+    reviews = int(review_count_element.find_element(By.XPATH, './strong').text)
+    photos = int(photo_count_element.find_element(By.XPATH, './strong').text)
+
+    elites = []
+    badges = user_profile_info.find_elements(By.XPATH, './/div[@class="clearfix u-space-b1"]/a[1]/span')
+    if len(badges) > 0:
+        for badge in badges:
+            if badge.get_attribute("class").find('show-tooltip') != -1:
+                continue
+            year_text = badge.text
+            if year_text.find('Elite') != -1:
+                year = year_text.split(' ')[1]
+            else:
+                year = "20" + str(int(year_text[1:]))
+            elites.append(year)
+    elites = ', '.join(elites)
+
+    tagline = ""
+    tagline_element = user_profile_info.find_elements(By.XPATH, './p[@class="user-tagline"]')
+    if len(tagline_element) > 0:
+        tagline = tagline_element[0].text[1:-1]
+
+    about_elements = driver.find_elements(By.XPATH, '//div[@class="user-details-overview_sidebar"]/div')
+
+    # Rating Distribution
+    star_5 = 0
+    star_4 = 0
+    star_3 = 0
+    star_2 = 0
+    star_1 = 0
+
+    # Review Votes
+    useful = 0
+    funny = 0
+    cool = 0
+
+    # Stats
+    tips = 0
+    review_updates = 0
+    bookmarks = 0
+    firsts = 0
+    followers = 0
+    lists = 0
+
+    # Compliments
+    thank_you = 0  # compliment
+    cute_pic = 0  # heart
+    good_writer = 0  # pencil
+    hot_stuff = 0  # flame
+    just_a_note = 0  # file
+    like_your_profile = 0  # profile
+    write_more = 0  # write_more
+    you_are_cool = 0  # cool
+    great_photos = 0  # camera
+    great_lists = 0  # list
+    you_are_funny = 0  # funny
+
+    # etc_info
+    location = ""
+    yelping_since = ""
+    things_i_love = ""
+
+    find_me_in = ""
+    my_hometown = ""
+    my_blog_or_website = ""
+    when_im_not_yelping = ""
+    why_ysrmr = ""
+    my_second_fw = ""
+    last_great_book = ""
+    my_first_concert = ""
+    my_favorite_movie = ""
+    my_last_meal_on_earth = ""
+    dont_tell_anyone_else_but = ""
+    most_recent_discovery = ""
+    current_crush = ""
+
+    for ysection in about_elements:
+        h4 = ysection.find_elements(By.XPATH, './h4')
+        if len(h4) > 0:
+            section_name = h4[0].text
+            # Rating Distribution
+            if section_name.find('Rating Distribution') != -1:
+                row_elements = ysection.find_elements(By.XPATH, './table/tbody/tr')
+                for row_element in row_elements:
+                    rating_num = int(row_element.find_elements(By.XPATH, './td/table/tbody/tr/td[2]')[0].text)
+                    if row_element.get_attribute('class').find('1') != -1:
+                        star_5 = rating_num
+                    elif row_element.get_attribute('class').find('2') != -1:
+                        star_4 = rating_num
+                    elif row_element.get_attribute('class').find('3') != -1:
+                        star_3 = rating_num
+                    elif row_element.get_attribute('class').find('4') != -1:
+                        star_2 = rating_num
+                    elif row_element.get_attribute('class').find('5') != -1:
+                        star_1 = rating_num
+
+            # Review Votes
+            elif section_name.find('Review Votes') != -1:
+                votes_elements = ysection.find_elements(By.XPATH, './ul/li')
+                for votes_element in votes_elements:
+                    votes_text = votes_element.text
+                    votes_num = int(votes_element.find_elements(By.XPATH, './strong')[0].text)
+                    if votes_text.find('Useful') != -1:
+                        useful = votes_num
+                    elif votes_text.find('Funny') != -1:
+                        funny = votes_num
+                    elif votes_text.find('Cool') != -1:
+                        cool = votes_num
+
+            # Stats
+            elif section_name.find('Stats') != -1:
+                stats_elements = ysection.find_elements(By.XPATH, './ul/li')
+                for stats_element in stats_elements:
+                    stats_text = stats_element.text
+                    stats_num = int(stats_element.find_elements(By.XPATH, './strong')[0].text)
+                    if stats_text.find('Tips') != -1:
+                        tips = stats_num
+                    elif stats_text.find('Review Updates') != -1:
+                        review_updates = stats_num
+                    elif stats_text.find('Bookmarks') != -1:
+                        bookmarks = stats_num
+                    elif stats_text.find('Firsts') != -1:
+                        firsts = stats_num
+                    elif stats_text.find('Followers') != -1:
+                        followers = stats_num
+                    elif stats_text.find('Lists') != -1:
+                        lists = stats_num
+
+            # Compliments
+            elif section_name.find('Compliments') != -1:
+                compliment_elements = ysection.find_elements(By.XPATH, './ul/li')
+                if len(compliment_elements) > 0:
+                    for compliment_element in compliment_elements:
+                        compliment_type = compliment_element.find_elements(By.XPATH, './div[1]/span')[0].get_attribute(
+                            'class')
+                        compliment_num = int(compliment_element.find_elements(By.XPATH, './div[2]/small')[0].text)
+                        if compliment_type.find('icon--18-compliment') != -1:
+                            thank_you = compliment_num
+                        elif compliment_type.find('icon--18-heart') != -1:
+                            cute_pic = compliment_num
+                        elif compliment_type.find('icon--18-pencil') != - 1:
+                            good_writer = compliment_num
+                        elif compliment_type.find('icon--18-flame') != -1:
+                            hot_stuff = compliment_num
+                        elif compliment_type.find('icon--18-file') != -1:
+                            just_a_note = compliment_num
+                        elif compliment_type.find('icon--18-profile') != -1:
+                            like_your_profile = compliment_num
+                        elif compliment_type.find('icon--18-write-more') != -1:
+                            write_more = compliment_num
+                        elif compliment_type.find('icon--18-cool') != -1:
+                            you_are_cool = compliment_num
+                        elif compliment_type.find('icon--18-camera') != -1:
+                            great_photos = compliment_num
+                        elif compliment_type.find('icon--18-list') != -1:
+                            great_lists = compliment_num
+                        elif compliment_type.find('icon--18-funny') != -1:
+                            you_are_funny = compliment_num
+
+        # Etc..
+        ul_element = ysection.find_elements(By.XPATH, './ul')
+        if len(ul_element) > 0:
+            if ul_element[0].get_attribute('class') == 'ylist':
+                extra_elements = ul_element[0].find_elements(By.XPATH, './li')
+                if len(extra_elements) > 0:
+                    for extra_element in extra_elements:
+                        title = extra_element.find_elements(By.XPATH, './h4')[0].text
+                        content = extra_element.find_elements(By.XPATH, './p')[0].text
+                        if title.find("Location") != -1:
+                            location = content
+                        elif title.find("Yelping Since") != -1:
+                            yelping_since = content
+                        elif title.find("Things I Love") != -1:
+                            things_i_love = content
+                        elif title.find("Find Me In") != -1:
+                            find_me_in = content
+                        elif title.find("My Hometown") != -1:
+                            my_hometown = content
+                        elif title.find("My Blog Or Website") != -1:
+                            my_blog_or_website = content
+                        elif title.find("When I’m Not Yelping...") != -1:
+                            when_im_not_yelping = content
+                        elif title.find("Why You Should Read My Reviews") != -1:
+                            why_ysrmr = content
+                        elif title.find("My Second Favorite Website") != -1:
+                            my_second_fw = content
+                        elif title.find("The Last Great Book I Read") != -1:
+                            last_great_book = content
+                        elif title.find("My First Concert") != -1:
+                            my_first_concert = content
+                        elif title.find("My Favorite Movie") != -1:
+                            my_favorite_movie = content
+                        elif title.find("My Last Meal On Earth") != -1:
+                            my_last_meal_on_earth = content
+                        elif title.find("Don’t Tell Anyone Else But...") != -1:
+                            dont_tell_anyone_else_but = content
+                        elif title.find("Most Recent Discovery") != -1:
+                            most_recent_discovery = content
+                        elif title.find("Current Crush") != -1:
+                            current_crush = content
+
+    this_profile = [reviewer['user_id'], name, nickname, profile_photo_urls, friends, reviews, photos, elites, tagline,
+                    star_5, star_4, star_3, star_2, star_1, useful, funny, cool, tips, review_updates, bookmarks, firsts,
+                    followers, lists, thank_you, cute_pic, good_writer, hot_stuff, just_a_note, like_your_profile,
+                    write_more, you_are_cool, great_photos, great_lists, you_are_funny, location, yelping_since,
+                    things_i_love, find_me_in, my_hometown, my_blog_or_website, when_im_not_yelping, why_ysrmr,
+                    my_second_fw, last_great_book, my_first_concert, my_favorite_movie, my_last_meal_on_earth,
+                    dont_tell_anyone_else_but, most_recent_discovery, current_crush]
+    profiles[index] = this_profile
+
+def res_scraper(driver, index, res, class_names, xpaths):
     user_ids = []
     yelp_ids = []
     establishments = []
@@ -99,6 +379,7 @@ def scraper(driver, index, res, class_names, xpaths):
 
     if total_page == -1:
         logger.info('[' + establishment + ']: Cannot find any reviews.')
+        no_review_res_list.append(index)
         raise
 
     if args.verbose:
@@ -129,8 +410,11 @@ def scraper(driver, index, res, class_names, xpaths):
 
         num_loaded_reviews = len(review_elements)
         if num_loaded_reviews == 0:
-            logger.info('[' + establishment + ']: Cannot find any reviews.')
-            raise
+            if current_page == '?start=' + str((total_page - 1) * 10):
+                logger.info('[' + establishment + ']: Oops. Skip this page.')
+            else:
+                logger.error('[' + establishment + ']: Page Load Failed.')
+                raise
         else:
             total_review_num = total_review_num + num_loaded_reviews
             for review_element in review_elements:
@@ -161,7 +445,7 @@ def scraper(driver, index, res, class_names, xpaths):
                         element = div.find_elements(By.XPATH, './span/a')
                         if len(element) > 0:  # photo or rotd
                             info = element[0].text
-                            if info.find('photos') != -1:
+                            if info.find('photos') != -1 or info.find('photo') != -1:
                                 num_photos = float(info.split(" ")[0])
                             elif info.find('ROTD') != -1:
                                 ROTD = True
@@ -298,25 +582,25 @@ def scraper(driver, index, res, class_names, xpaths):
                 pr_avg_funnys.append(avg_pr_funny)
                 pr_avg_cools.append(avg_pr_cool)
 
-        yelp_ids.extend([res['yelp_id']] * num_loaded_reviews)
-        establishments.extend([establishment] * num_loaded_reviews)
+            yelp_ids.extend([res['yelp_id']] * num_loaded_reviews)
+            establishments.extend([establishment] * num_loaded_reviews)
 
-        if len(list_of_page) == 0:
-            end = timer()
-            global reviews
-            logger.info('[' + establishment + ']: Done. ' + str(total_review_num) + ' reviews are collected.')
-            if args.verbose:
-                logger.info('Elapsed Time: ' + str(timedelta(seconds=(end - start))))
-            this_reviews = [yelp_ids, establishments, user_ids, ratings, rating_dates, review_texts, is_rotd,
-                            is_updated, num_photoss, num_usefuls, num_funnys, num_cools, owner_replied,
-                            owner_reply_dates, owner_reply_texts, pr_avg_ratings, pr_avg_usefuls, pr_avg_funnys,
-                            pr_avg_cools]
-            reviews[index] = this_reviews
-            break
+            if len(list_of_page) == 0:
+                end = timer()
+                global reviews
+                logger.info('[' + establishment + ']: Done. ' + str(total_review_num) + ' reviews are collected.')
+                if args.verbose:
+                    logger.info('Elapsed Time: ' + str(timedelta(seconds=(end - start))))
+                this_reviews = [yelp_ids, establishments, user_ids, ratings, rating_dates, review_texts, is_rotd,
+                                is_updated, num_photoss, num_usefuls, num_funnys, num_cools, owner_replied,
+                                owner_reply_dates, owner_reply_texts, pr_avg_ratings, pr_avg_usefuls, pr_avg_funnys,
+                                pr_avg_cools]
+                reviews[index] = this_reviews
+                break
 
 def main(args, obj):
+    chrome_options = webdriver.ChromeOptions()
     if platform.system() != 'Windows' or args.open_chrome == 0:
-        chrome_options = webdriver.ChromeOptions()
         chrome_options.add_argument('--headless')
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
@@ -330,15 +614,23 @@ def main(args, obj):
     if args.aws_mode:
         yelp_target_df = pd.read_csv(io.BytesIO(obj['Body'].read()))
     else:
-        yelp_target_df = pd.read_csv(args.dataset_name + '.csv', encoding='utf-8')
+        yelp_target_df = pd.read_csv(args.target_list_name + '.csv', encoding='utf-8')
 
-    if not 'yelp_id' in yelp_target_df.columns:
-        logger.error('Cannot find yelp_id column in your list file. The program will be terminated.')
-        exit()
+    object_name = ""
+    if args.collected_object == 'profile':
+        if not 'user_id' in yelp_target_df.columns:
+            logger.error('Cannot find user_id column in your list file. The program will be terminated.')
+            exit()
+        object_name = "user"
+    else:
+        if not 'yelp_id' in yelp_target_df.columns:
+            logger.error('Cannot find yelp_id column in your list file. The program will be terminated.')
+            exit()
+        object_name = "restaurant"
 
     if args.verbose:
-        logger.info('The restaurant list file has been successfully loaded.')
-        logger.info('The total number of restaurants is ' + str(len(yelp_target_df)) + '.')
+        logger.info('The target list file has been successfully loaded.')
+        logger.info('The total number of ' + object_name + 's is ' + str(len(yelp_target_df)) + '.')
 
     if args.index_specified_mode:
         index_set = sorted(utils.load_index_set('index_set.txt'))
@@ -358,63 +650,84 @@ def main(args, obj):
                 max_index = args.max_index
         index_set = list(range(args.min_index, max_index + 1, 1))
 
-    target_res_num = len(index_set)
+    target_obj_num = len(index_set)
     yelp_target_df = yelp_target_df.loc[index_set]
     if args.verbose:
-        logger.info('The number of target restaurants is ' + str(target_res_num))
+        logger.info('The number of target ' + object_name + 's is ' + str(target_obj_num))
 
+    start = timer()
     while(True):
         global success_num, fail_num
         if len(index_set) == 0:
             break
 
         try:
-            for index, res in yelp_target_df.iterrows():
-                scraper(driver, index, res, class_names, xpaths)
+            for index, object in yelp_target_df.iterrows():
+                if args.collected_object == 'profile':
+                    reviewer_scraper(driver, index, object)
+                else:
+                    res_scraper(driver, index, object, class_names, xpaths)
                 success_num += 1
                 index_set.pop(0)
         except:
             fail_num += 1
             error_index = index_set.pop(0)
-            fail_list.append(error_index)
+            if not error_index in no_review_res_list:
+                fail_list.append(error_index)
             logger.error(sys.exc_info()[0])
-            logger.error('Index ' + str(error_index) +': Error occured. This restaurant gets skipped.')
+            logger.error(traceback.format_exc())
+            logger.error('Index ' + str(error_index) +': Error occured. This ' + object_name + ' gets skipped.')
             if len(index_set) > 0:
                 yelp_target_df = yelp_target_df.loc[index_set]
 
-
     logger.info('-----------------')
     logger.info('Report')
-    logger.info('Total Number of Target Restaurants: ' + str(target_res_num))
+    logger.info('Total Number of Targets: ' + str(target_obj_num))
     logger.info('Success: ' + str(success_num))
     logger.info('Fail: ' + str(fail_num))
     if fail_num > 0:
         msg = ", ".join(map(str, fail_list))
         logger.info(msg)
+        msg2 = ', '.join(map(str, no_review_res_list))
+        logger.info('The following ' + object_name + 's have no reviews: ' + msg2)
     logger.info('-----------------')
 
     if success_num == 0:
-        logger.info('Nothing to save because NO REVIEWS ARE COLLECTED :(')
+        logger.info('Nothing to save because NO DATA HAVE BEEN COLLECTED :(')
         logger.info('Please check class names and xpaths in keys_for_scraping.ini file. They may be not valid.')
 
     else:
-        logger.info('Saving the collected reviews...')
-        global reviews
-        all_reviews = utils.set_to_df(reviews)
+        logger.info('Saving the result...')
+        global reviews, profiles
+        if args.collected_object == 'profile':
+            results = utils.set_to_df(profiles, True)
+        else:
+            results = utils.set_to_df(reviews, False)
+
         file_name = 'yelp_review.csv'
+        if args.collected_object == 'profile':
+            file_name = 'yelp_profile.csv'
+
         if args.index_suffix:
             if args.index_specified_mode:
-                file_name = 'yelp_review_index_specified (' + str(success_num) + ' of ' + str(target_res_num) + ' reviews).csv'
+                file_name = 'yelp_review_index_specified (' + str(success_num) + ' of ' + str(target_obj_num) + ' reviews).csv'
+                if args.collected_object == 'profile':
+                    file_name = 'yelp_profile_index_specified (' + str(success_num) + ' of ' + str(target_obj_num) + ' users).csv'
             else:
                 if fail_num == 0:
                     file_name = 'yelp_review_from_' + str(args.min_index) + '_to_' + str(max_index) + '.csv'
+                    if args.collected_object == 'profile':
+                        file_name = 'yelp_profile_from_' + str(args.min_index) + '_to_' + str(max_index) + '.csv'
                 else:
                     file_name = 'yelp_review_from_' + str(args.min_index) + '_to_' + str(max_index) + \
-                                '(' + str(fail_num) + ' fails).csv'
-
+                                ' (' + str(fail_num) + ' fails).csv'
+                    if args.collected_object == 'profile':
+                        file_name = 'yelp_profile_from_' + str(args.min_index) + '_to_' + str(max_index) + \
+                                    ' (' + str(fail_num) + ' fails).csv'
+        end = timer()
         if args.aws_mode:
             with io.StringIO() as csv_buffer:
-                all_reviews.to_csv(csv_buffer, index=False)
+                results.to_csv(csv_buffer, index=False)
                 response = s3.put_object(Bucket=bucket_name, Key=file_name, Body=csv_buffer.getvalue())
                 status = response.get("ResponseMetadata", {}).get("HTTPStatusCode")
                 if status == 200:
@@ -423,13 +736,16 @@ def main(args, obj):
                 else:
                     logger.error('Failed to save the result file to your S3 bucket.')
         else:
-            all_reviews.to_csv(file_name, encoding='utf-8', index=False)
+            results.to_csv(file_name, encoding='utf-8', index=False)
             logger.info('Done. All work you requested has been finished. The program will be terminated.')
+        logger.info('Total Elapsed Time: ' + str(timedelta(seconds=(end - start))))
 
 if __name__ == '__main__':
-    args = parser.parse_args()
-
     parser_error = False
+    if args.collected_object == 'restaurant':
+        print('This option is not supported yet. Sorry :(. The program will be terminated.')
+        exit()
+
     # args check
     if args.index_specified_mode:
         if not os.path.exists('index_set.txt'):
@@ -478,7 +794,7 @@ if __name__ == '__main__':
 
         else:
             AWSAccessKeyID, AWSSecretKey, region, bucket_name = utils.load_aws_keys('aws_key.ini')
-            prefix = args.dataset_name + '.csv'
+            prefix = args.target_list_name + '.csv'
             try:
                 s3 = boto3.client('s3', aws_access_key_id=AWSAccessKeyID, aws_secret_access_key=AWSSecretKey,
                               region_name=region)
@@ -490,11 +806,11 @@ if __name__ == '__main__':
                 try:
                     obj = s3.get_object(Bucket=bucket_name, Key=prefix)
                 except:
-                    print(args.dataset_name + '.csv cannot be found. The program will be terminated.')
+                    print(args.target_list_name + '.csv cannot be found. The program will be terminated.')
                     exit()
     else:
-        if not os.path.exists(args.dataset_name + '.csv'):
-            print(args.dataset_name + '.csv cannot be found. The program will be terminated.')
+        if not os.path.exists(args.target_list_name + '.csv'):
+            print(args.target_list_name + '.csv cannot be found. The program will be terminated.')
             exit()
 
     if not os.path.exists('keys_for_scraping.ini'):
