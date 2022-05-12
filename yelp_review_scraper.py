@@ -73,24 +73,246 @@ logger.addHandler(streamHandler)
 success_num = 0
 fail_num = 0
 fail_list = []
-no_review_res_list = []
+invalid_object_list = []
 reviews = {}
 profiles = {}
+restaurants = {}
 
-def reviewer_scraper(driver, index, reviewer):
+def res_scraper(driver, index, res):
+    url = "https://www.yelp.com/biz/" + res['yelp_id']
+    driver.get(url)
+    time.sleep(args.wait_time_for_new_index)
+
+    error_404 = len(driver.find_elements(By.CLASS_NAME, 'page-status')) > 0
+    if error_404:
+        logger.error('This page has been removed.')
+        invalid_object_list.append(index)
+        raise
+
+    error = []
+
+    # Name
+    res_name = ""
+    name_element = driver.find_elements(By.XPATH, '//h1[@class="css-wbh247"]')
+    if len(name_element) > 0:
+        res_name = name_element[0].text
+    else:
+        error.append("Name")
+        res_name = "NA"
+
+    # Closed
+    is_closed = len(driver.find_elements(By.XPATH, '//*[contains(text(), \'Yelpers report this location has closed.\')]')) > 0
+    if is_closed:
+        if res_name != "":
+            logger.info('[' + res_name + '] This location has closed.')
+        else:
+            logger.info('This location has closed.')
+
+    # Ratings
+    rating_element = driver.find_elements(By.XPATH, '//yelp-react-root/div[1]/div[3]/div[1]/div[1]/div/div/div[2]/div[1]/span/div')
+    if len(rating_element) > 0:
+        ratings = rating_element[0].get_attribute('aria-label')
+        ratings = float(ratings[:ratings.find(" ")])
+    else:
+        error.append("Ratings")
+        ratings = "NA"
+
+    # Number of Total Reviews
+    num_reviews_element = driver.find_elements(By.XPATH,
+                                               '//yelp-react-root/div[1]/div[3]/div[1]/div[1]/div/div/div[2]/div[2]/span')
+    if len(num_reviews_element) > 0:
+        num_reviews = int(num_reviews_element[0].text[:num_reviews_element[0].text.find(" ")])
+    else:
+        error.append("Number of Total Reviews")
+        num_reviews = "NA"
+
+    # Claimed
+    claimed_element = driver.find_elements(By.XPATH,
+                                           '//yelp-react-root/div[1]/div[3]/div[1]/div[1]/div/div/span[1]/span/div/span')
+    if len(claimed_element) > 0:
+        claimed = claimed_element[0].text
+    else:
+        error.append("Claimed")
+        claimed = "NA"
+
+    # Price Range
+    pricerange_element = driver.find_elements(By.XPATH, '/yelp-react-root/div[1]/div[3]/div[1]/div[1]/div/div/span[2]/span')
+    if len(pricerange_element) > 0:
+        pricerange = pricerange_element[0].text
+    else:
+        error.append("Price Range")
+        priceranges = "NA"
+
+    # Category list
+    category_elements = driver.find_elements(By.XPATH, 'yelp-react-root/div[1]/div[3]/div[1]/div[1]/div/div/span[3]/span/a')
+    if len(category_elements) > 0:
+        category_list = ''
+        first = True
+        for element in category_elements:
+            category = element.text
+            if first:
+                category_list = category
+                first = False
+            else:
+                category_list = category_list + ", " + category
+    else:
+        error.append("Category List")
+        category_lists = "NA"
+
+    # Number of Photos Posted in Reviews
+    photo_num_element = driver.find_elements(By.XPATH, '//a[@class="css-1enow5j"]/span')
+    if len(photo_num_element) > 0:
+        if photo_num_element[0].text == 'Add photo or video':
+            photo_num = 0
+        else:
+            photo_num = int(photo_num_element[0].text.split(" ")[1])
+    else:
+        error.append("Number of Photos Posted in Reviews")
+        photo_num = "NA"
+
+    ############# Phone Number #############
+    phone_icon_element = driver.find_elements(By.XPATH,
+                                              '//span[@class="icon--24-phone-v2 icon__09f24__zr17A css-147xtl9"]')
+    if len(phone_icon_element) == 0:
+        phone_icon_element = driver.find_elements(By.XPATH,
+                                                  '//span[@class="icon--24-phone-v2 icon__373c0__viOUw css-nyitw0"]')
+    if len(phone_icon_element) == 0:
+        error.append("Phone Number")
+        phone_numbers = "NA"
+    else:
+        phone_number = phone_icon_element[0].find_elements(By.XPATH,
+                                                           './../preceding-sibling::div/p[@class=" css-1h7ysrc"]')
+        if len(phone_number) == 0:
+            phone_number = phone_icon_element[0].find_elements(By.XPATH,
+                                                               './../preceding-sibling::div/p[@class=" css-oe5jd3"]')
+        phone_numbers = phone_number[0].text
+
+    ############# Address #############
+    direction_icon_element = driver.find_elements(By.XPATH,
+                                                  '//span[@class="icon--24-directions-v2 icon__09f24__zr17A css-nyitw0"]')
+    if len(direction_icon_element) == 0:
+        direction_icon_element = driver.find_elements(By.XPATH,
+                                                      '//span[@class="icon--24-directions-v2 icon__373c0__viOUw css-nyitw0"]')
+    if len(direction_icon_element) == 0:
+        error.append("Address")
+        addresses = "NA"
+    else:
+        address = direction_icon_element[0].find_elements(By.XPATH,
+                                                          './../../preceding-sibling::div/p[@class=" css-v2vuco"]')
+        if len(address) == 0:
+            address = direction_icon_element[0].find_elements(By.XPATH,
+                                                              './../../preceding-sibling::div/p[@class=" css-1ccncw"]')
+        if len(address) == 0:
+            error.append("Address")
+            addresses = "NA"
+        else:
+            addresses = address[0].text
+
+    ############# Amenities #############
+    possible_buttons = driver.find_elements(By.XPATH, '//button[@class=" css-zbyz55"]')
+
+    # Check elements are really more attributes button
+    for button in possible_buttons:
+        button_name = button.find_elements(By.XPATH, './span/p')
+        if len(button_name) > 0:
+            if button_name[0].text.find("More Attributes") != -1:
+                button.click()
+                break
+        else:
+            continue
+
+    amenities_elements = driver.find_elements(By.XPATH,
+                                              '//div[@class=" arrange__373c0__3yvT_ gutter-2__373c0__1fwxZ layout-wrap__373c0__1j3yL layout-2-units__373c0__25Mue border-color--default__373c0__2s5dW"]/div')
+    if len(amenities_elements) == 0:
+        amenities_elements = driver.find_elements(By.XPATH,
+                                                  '//div[@class=" arrange__09f24__LDfbs gutter-2__09f24__CCmUo layout-wrap__09f24__GEBlv layout-2-units__09f24__PsGVW border-color--default__09f24__NPAKY"]/div')
+    if len(amenities_elements) == 0:
+        error.append("Amenities")
+        amenities = "NA"
+    else:
+        amenities_list = []
+        class_names = [[' css-1h7ysrc', ' css-1ccncw'], [' css-oe5jd3', ' css-v2vuco']]
+        amenity_desc = ''
+        for amenities_element in amenities_elements:
+            for name in class_names[0]:
+                info = amenities_element.find_elements(By.XPATH, './/span[@class="' + name + '"]')
+                if len(info) > 0:
+                    amenity_desc = info[0].text
+                    amenities_list.append(amenity_desc)
+                    break
+
+        if len(amenity_desc) == 0:
+            for amenities_element in amenities_elements:
+                for name in class_names[1]:
+                    info = amenities_element.find_elements(By.XPATH, './/span[@class="' + name + '"]')
+                    if len(info) > 0:
+                        amenity_desc = info[0].text
+                        amenities_list.append(amenity_desc)
+                        break
+        amenities = ", ".join(amenities_list)
+
+    ############# Hours #############
+    table_elements = driver.find_elements(By.XPATH,
+                                          '//table[@class=" hours-table__373c0__2YHlD table__373c0__1FIZ8 table--simple__373c0__3QsR_"]/tbody/tr[@class=" table-row__373c0__1F6B0"]')
+    if len(table_elements) == 0:
+        table_elements = driver.find_elements(By.XPATH,
+                                              '//table[@class=" hours-table__09f24__KR8wh table__09f24__J2OBP table--simple__09f24__vy16f"]/tbody/tr[@class=" table-row__09f24__YAU9e"]')
+    if len(table_elements) == 0:
+        error.append("Operating Hours")
+        day_and_operating_times = "NA"
+    else:
+        day_and_operating_times = ''
+        for tr in table_elements:
+            day = tr.find_elements(By.XPATH, './th/p')[0].text
+            if len(day) == 0:
+                continue
+            operating_times = []
+            operating_times_element = tr.find_elements(By.XPATH, './td/ul/li')
+            for element in operating_times_element:
+                operating_time = element.find_element(By.XPATH, './p').text
+                operating_times.append(operating_time)
+
+            if len(day_and_operating_times) == 0:
+                if len(operating_times) > 1:
+                    day_and_operating_times = day + ": " + ", ".join(operating_times)
+                else:
+                    day_and_operating_times = day + ": " + operating_times[0]
+            else:
+                if len(operating_times) > 1:
+                    day_and_operating_times = day_and_operating_times + " | " + day + ": " + ", ".join(operating_times)
+                else:
+                    day_and_operating_times = day_and_operating_times + " | " + day + ": " + operating_times[0]
+
+    if len(error) == 0:
+        logger.info('[' + res_name + ']: Done. All information has been successfully collected.')
+    else:
+        logger.info('[' + res_name + ']: Done. But some information was failed to be collected:')
+        logger.info(", ".join(error))
+
+    this_res_info = [res['yelp_id'], name, is_closed, claimed, ratings, num_reviews, priceranges, category_lists,
+                     photo_num, phone_numbers, addresses, day_and_operating_times, amenities]
+    restaurants[index] = this_res_info
+
+def profile_scraper(driver, index, reviewer):
     logger.info('Current working index: ' + str(index) + '. User ID is ' + reviewer['user_id'] + '.')
 
     url = 'https://www.yelp.com/user_details?userid=' + reviewer['user_id']
     driver.get(url)
     time.sleep(args.wait_time_for_new_index)
+
+    error_404 = len(driver.find_elements(By.XPATH, '//div[@class="arrange_unit arrange_unit--fill"]/p')) > 0
+    if error_404:
+        logger.error('This user has been removed.')
+        invalid_object_list.append(index)
+        raise
+
     profile_photo_urls = []
 
     photo_info = "yelp.www.init.user_details.initPhotoSlideshow(\".js-photo-slideshow-user-details\", "
     photo_slide_script = ""
-    all_scripts = driver.find_elements(By.TAG_NAME, 'script')
-    for script in all_scripts:
-        if script.get_attribute('innerHTML').find(photo_info) != -1:
-            photo_slide_script = script.get_attribute('innerHTML')
+    script_element = driver.find_elements(By.XPATH, '//*[contains(text(), \'yelp.www.init.user_details.initPhotoSlideshow\')]')
+    if len(script_element) > 0:
+        photo_slide_script = script_element[0].get_attribute('innerHTML')
 
     # No Photos or Only One Photo
     if photo_slide_script == "":
@@ -334,7 +556,7 @@ def reviewer_scraper(driver, index, reviewer):
                     dont_tell_anyone_else_but, most_recent_discovery, current_crush]
     profiles[index] = this_profile
 
-def res_scraper(driver, index, res, class_names, xpaths):
+def review_scraper(driver, index, res, class_names, xpaths):
     user_ids = []
     yelp_ids = []
     establishments = []
@@ -379,7 +601,7 @@ def res_scraper(driver, index, res, class_names, xpaths):
 
     if total_page == -1:
         logger.info('[' + establishment + ']: Cannot find any reviews.')
-        no_review_res_list.append(index)
+        invalid_object_list.append(index)
         raise
 
     if args.verbose:
@@ -664,15 +886,17 @@ def main(args, obj):
         try:
             for index, object in yelp_target_df.iterrows():
                 if args.collected_object == 'profile':
-                    reviewer_scraper(driver, index, object)
+                    profile_scraper(driver, index, object)
+                elif args.collected_object == 'review':
+                    review_scraper(driver, index, object, class_names, xpaths)
                 else:
-                    res_scraper(driver, index, object, class_names, xpaths)
+                    res_scraper(driver, index, object)
                 success_num += 1
                 index_set.pop(0)
         except:
             fail_num += 1
             error_index = index_set.pop(0)
-            if not error_index in no_review_res_list:
+            if not error_index in invalid_object_list:
                 fail_list.append(error_index)
             logger.error(sys.exc_info()[0])
             logger.error(traceback.format_exc())
@@ -688,8 +912,9 @@ def main(args, obj):
     if fail_num > 0:
         msg = ", ".join(map(str, fail_list))
         logger.info(msg)
-        msg2 = ', '.join(map(str, no_review_res_list))
-        logger.info('The following ' + object_name + 's have no reviews: ' + msg2)
+        if len(invalid_object_list) > 0:
+            msg2 = ', '.join(map(str, invalid_object_list))
+            logger.info('The following ' + object_name + 's has no information: ' + msg2)
     logger.info('-----------------')
 
     if success_num == 0:
@@ -698,32 +923,47 @@ def main(args, obj):
 
     else:
         logger.info('Saving the result...')
-        global reviews, profiles
+        global reviews, profiles, restaurants
         if args.collected_object == 'profile':
-            results = utils.set_to_df(profiles, True)
+            results = utils.set_to_df(profiles, 'profile')
+        elif args.collected_object == 'review':
+            results = utils.set_to_df(reviews, 'review')
         else:
-            results = utils.set_to_df(reviews, False)
+            results = utils.set_to_df(restaurants, 'restaurant')
 
-        file_name = 'yelp_review.csv'
         if args.collected_object == 'profile':
             file_name = 'yelp_profile.csv'
+        elif args.collected_object == 'review':
+            file_name = 'yelp_review.csv'
+        else:
+            file_name = 'yelp_res_info.csv'
 
         if args.index_suffix:
             if args.index_specified_mode:
-                file_name = 'yelp_review_index_specified (' + str(success_num) + ' of ' + str(target_obj_num) + ' reviews).csv'
                 if args.collected_object == 'profile':
                     file_name = 'yelp_profile_index_specified (' + str(success_num) + ' of ' + str(target_obj_num) + ' users).csv'
+                elif args.collected_object == 'review':
+                    file_name = 'yelp_review_index_specified (' + str(success_num) + ' of ' + str(target_obj_num) + ' reviews).csv'
+                else:
+                    file_name = 'yelp_res_info_index_specified (' + str(success_num) + ' of ' + str(target_obj_num) + ' reviews).csv'
             else:
                 if fail_num == 0:
-                    file_name = 'yelp_review_from_' + str(args.min_index) + '_to_' + str(max_index) + '.csv'
                     if args.collected_object == 'profile':
                         file_name = 'yelp_profile_from_' + str(args.min_index) + '_to_' + str(max_index) + '.csv'
+                    elif args.collected_object == 'review':
+                        file_name = 'yelp_review_from_' + str(args.min_index) + '_to_' + str(max_index) + '.csv'
+                    else:
+                        file_name = 'yelp_res_info_from_' + str(args.min_index) + '_to_' + str(max_index) + '.csv'
                 else:
-                    file_name = 'yelp_review_from_' + str(args.min_index) + '_to_' + str(max_index) + \
-                                ' (' + str(fail_num) + ' fails).csv'
                     if args.collected_object == 'profile':
                         file_name = 'yelp_profile_from_' + str(args.min_index) + '_to_' + str(max_index) + \
                                     ' (' + str(fail_num) + ' fails).csv'
+                    elif args.collected_object == 'review':
+                        file_name = 'yelp_review_from_' + str(args.min_index) + '_to_' + str(max_index) + \
+                                ' (' + str(fail_num) + ' fails).csv'
+                    else:
+                        file_name = 'yelp_res_info_' + str(args.min_index) + '_to_' + str(max_index) + \
+                                ' (' + str(fail_num) + ' fails).csv'
         end = timer()
         if args.aws_mode:
             with io.StringIO() as csv_buffer:
@@ -742,10 +982,6 @@ def main(args, obj):
 
 if __name__ == '__main__':
     parser_error = False
-    if args.collected_object == 'restaurant':
-        print('This option is not supported yet. Sorry :(. The program will be terminated.')
-        exit()
-
     # args check
     if args.index_specified_mode:
         if not os.path.exists('index_set.txt'):

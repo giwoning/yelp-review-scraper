@@ -45,8 +45,8 @@ def check_index_list(ilist, max_index):
             pass_ = False
     return pass_
 
-def set_to_df(_set, profile_mode):
-    if profile_mode:
+def set_to_df(_set, mode):
+    if mode == 'profile':
         profile_info = ['userid', 'name', 'nickname', 'profile_photo_urls', 'friends', 'reviews', 'photos', 'elites', 'tagline',
                         'star_5', 'star_4', 'star_3', 'star_2', 'star_1', 'useful', 'funny', 'cool', 'tips',
                         'review_updates', 'bookmarks', 'firsts', 'followers', 'lists', 'thank_you', 'cute_pic',
@@ -163,7 +163,7 @@ def set_to_df(_set, profile_mode):
 
         return all_profiles
 
-    else:
+    elif mode == 'review':
         review_info = ['userid', 'yelpid', 'establishment', 'review', 'rating', 'rating_date', 'rotd', 'updated', 'photos',
                        'useful', 'funny', 'cool', 'owner_replied', 'owner_reply_date', 'owner_reply', 'pr_avg_ratings',
                        'pr_avg_usefuls', 'pr_avg_funnys', 'pr_avg_cools']
@@ -190,7 +190,7 @@ def set_to_df(_set, profile_mode):
             pr_avg_funnys = reviews[17]
             pr_avg_cools = reviews[18]
 
-            this_reviews = pd.DataFrame({'userid': user_ids,
+            this_reviews = pd.DataFrame.from_records([{'userid': user_ids,
                                           'yelpid': yelp_ids,
                                           'establishment': establishments,
                                           'review': review_texts,
@@ -208,8 +208,45 @@ def set_to_df(_set, profile_mode):
                                           'pr_avg_ratings': pr_avg_ratings,
                                           'pr_avg_usefuls': pr_avg_usefuls,
                                           'pr_avg_funnys': pr_avg_funnys,
-                                          'pr_avg_cools': pr_avg_cools})
+                                          'pr_avg_cools': pr_avg_cools}])
 
             all_reviews = pd.concat([all_reviews, this_reviews])
 
         return all_reviews
+
+    else:
+        res_info = ['yelpid', 'name', 'closed', 'verified', 'rating', 'review', 'princerange', 'categorylist', 'photos',
+                    'phone', 'address', 'openingtimes', 'morebusinessinfo']
+        all_res_info = pd.DataFrame(columns=res_info)
+
+        for res in _set.values():
+            yelpid = res[0]
+            name = res[1]
+            closed = res[1]
+            claimed = res[2]
+            rating = res[3]
+            review = res[4]
+            pricerange = res[5]
+            categorylist = res[6]
+            photos = res[7]
+            phone = res[8]
+            address = res[9]
+            openingtimes = res[10]
+            morebusinessinfo = res[11]
+
+            this_res = pd.DataFrame({'yelpid': yelpid,
+                                     'name': name,
+                                     'closed': closed,
+                                     'verified': claimed,
+                                     'rating': rating,
+                                     'review': review,
+                                     'pricerange': pricerange,
+                                     'categorylist': categorylist,
+                                     'photos': photos,
+                                     'phone': phone,
+                                     'address': address,
+                                     'openingtimes': openingtimes,
+                                     'morebusinessinfo': morebusinessinfo})
+            all_res_info = pd.concat([all_res_info, this_res])
+
+        return all_res_info
